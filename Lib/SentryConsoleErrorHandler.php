@@ -10,23 +10,15 @@ App::uses('ConsoleErrorHandler', 'Console');
 class SentryConsoleErrorHandler extends ConsoleErrorHandler {
 
 	protected static function sentryLog($exception) {
-		if (Configure::read('debug')==0 || !Configure::read('Sentry.production_only')) {
-			Raven_Autoloader::register();
-			App::uses('CakeRavenClient', 'Sentry.Lib');
+        Raven_Autoloader::register();
+        App::uses('CakeRavenClient', 'Sentry.Lib');
 
-			$client = new CakeRavenClient(Configure::read('Sentry.PHP.server'));
-			$client->captureException($exception, get_class($exception), 'PHP');
-		}
+        $client = new CakeRavenClient(Configure::read('Sentry.init.dsn'));
+        $client->captureException($exception, get_class($exception), 'PHP');
 	}
 
 	public function handleException($exception) {
 		try {
-			// Avoid bot scan errors
-			if (Configure::read('Sentry.avoid_bot_scan_errors') && ($exception instanceof MissingControllerException || $exception instanceof MissingPluginException) && Configure::read('debug')==0) {
-                		echo Configure::read('Sentry.avoid_bot_scan_errors');
-                		exit(0);
-            		}
-
 			self::sentryLog($exception);
 
 			return parent::handleException($exception);

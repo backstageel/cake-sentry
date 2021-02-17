@@ -9,6 +9,8 @@
 class SentryErrorHandler extends ErrorHandler
 {
 
+    public static $throwableFilterFunc = null;
+
     public static function handleError($code, $description, $file = null, $line = null, $context = null)
     {
         try {
@@ -23,56 +25,25 @@ class SentryErrorHandler extends ErrorHandler
 
     protected static function sentryLog($exception)
     {
-        if (!Configure::read('Sentry.production_only')) {
-            Sentry\init([
-                'dsn' => Configure::read('SENTRY_DSN'),
-                'traces_sample_rate' => 1.0,
-                'environment' => Configure::read('environment'),
-            ]);
-            if (class_exists('AuthComponent')) {
-                $model = Configure::read('Sentry.User.model');
-                if (empty($model)) {
-                    $model = 'User';
-                }
-                $User = ClassRegistry::init($model);
-                $mail = Configure::read('Sentry.User.email_field');
-                if (empty($mail)) {
-                    if ($User->hasField('email')) {
-                        $mail = 'email';
-                    } else {
-                        if ($User->hasField('mail')) {
-                            $mail = 'mail';
-                        }
-                    }
-                }
-                if (AuthComponent::user($User->primaryKey)) {
-                    Sentry\configureScope(function (Sentry\State\Scope $scope) use ($mail, $User): void {
-                        $scope->setUser([
-                            'email' => AuthComponent::user($mail),
-                            "id" => AuthComponent::user($User->primaryKey),
-                            "username" => AuthComponent::user($User->displayField),
-                        ]);
-                    });
-                }
-            }
-            Sentry\captureException($exception);
-        }
+        Sentry\captureException($exception);
     }
 
     public static function handleException($exception)
     {
-        try {
-            // Avoid bot scan errors
-            if (Configure::read('Sentry.avoid_bot_scan_errors') && ($exception instanceof MissingControllerException || $exception instanceof MissingPluginException) && Configure::read('debug') == 0) {
-                echo Configure::read('Sentry.avoid_bot_scan_errors');
-                exit(0);
-            }
 
-            self::sentryLog($exception);
-
+        // If the filter returns true, then don't send to sentry as it's in the ignoreList
+        if (
+            is_callable(self::$throwableFilterFunc) &&
+            call_user_func(self::$throwableFilterFunc, $exception) == true
+        ){
             parent::handleException($exception);
-        } catch (Exception $e) {
-            parent::handleException($e);
+            return;
+        }
+
+        try {
+            self::sentryLog($exception);
+        } finally {
+            parent::handleException($exception);
         }
     }
 }
